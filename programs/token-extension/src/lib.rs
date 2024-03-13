@@ -38,7 +38,8 @@ pub mod p2p_challenge {
             challenge_metadata.to_account_info().key.as_ref(),
             &[bump_seed],
         ];
-        let signer_seeds = &[seeds];
+
+        let signer_seeds: &[&[&[u8]]] = &[seeds];
 
         // Fund the escrow token account and delegate it to the escrow authority PDA
         let cpi_accounts = Transfer {

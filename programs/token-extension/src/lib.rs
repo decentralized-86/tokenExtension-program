@@ -1,5 +1,7 @@
 pub mod instructions;
 pub mod state;
+use std::collections::HashMap;
+
 // use crate::instructions::{ChallengeParams, CreateChallenge};
 use crate::state::ChallengeMetadata;
 use anchor_lang::prelude::*;
@@ -67,7 +69,13 @@ pub mod p2p_challenge {
         // Update the challenge's metadata with the participant's information and new total stake amount.
         Ok(())
     }
+}
 
+#[account]
+pub struct PlayerData {
+    // TODO: Here we need to provde an appropriate type for player_info
+    // string is for temporary purpose
+    pub player_info: HashMap<String, String>,
 }
 
 #[derive(Accounts)]
@@ -75,8 +83,8 @@ pub struct JoinChallenge<'info> {
     pub challenge_metadata: Account<'info, ChallengeMetadata>,
     pub escrow_token_acount: Account<'info, TokenAccount>,
     pub creator: Signer<'info>,
+    player_info: Account<'info, PlayerData>,
 }
-
 
 #[derive(Clone, AnchorSerialize, AnchorDeserialize)]
 pub struct ChallengeParams {

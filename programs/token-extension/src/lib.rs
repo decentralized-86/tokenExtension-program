@@ -5,14 +5,21 @@ use std::collections::HashMap;
 // use crate::instructions::{ChallengeParams, CreateChallenge};
 use crate::state::ChallengeMetadata;
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Transfer};
-use anchor_spl::token::{Mint, TokenAccount};
+use anchor_spl::token::{self, Mint, TokenAccount, Transfer};
+
+use anchor_lang::solana_program::pubkey;
 
 declare_id!("FUkgpVESK463wEYuwfpTbXGr2YtgezdQnSDPhteNWyrN");
 
 #[program]
 pub mod p2p_challenge {
     use super::*;
+
+    #[error_code]
+    pub enum MyError {
+        #[msg("Password was wrong")]
+        WrongPassword,
+    }
 
     pub fn create_challenge(ctx: Context<CreateChallenge>, params: ChallengeParams) -> Result<()> {
         let challenge_metadata = &mut ctx.accounts.challenge_metadata;
@@ -68,6 +75,91 @@ pub mod p2p_challenge {
         // token::transfer(, stake_amount);
         // Update the challenge's metadata with the participant's information and new total stake amount.
         Ok(())
+    }
+
+    pub fn finalize_challenge(
+        ctx: Context<FinalizeChallenge>,
+        winner: pubkey,
+        password: string,
+    ) -> Result<()> {
+        //Check password
+        if password != "secrect" {
+            return err!(MyError::WrongPassword);
+            //panic!("Password wrong. OMG!");
+        }
+
+        let challenge_metadata = &ctx.accounts.challenge_metadata;
+        let escrow_token_account = &ctx.accounts.escrow_token_account;
+        let winner_account = &ctx.accounts.winner;
+
+        // Check if the challenge is active
+        if !challenge_metadata.is_active {
+            return Err(ErrorCode::ChallengeNotActive.into());
+        }
+
+        // Update winner information
+        challenge_metadata.winner = winner;
+        challenge_metadata.is_active = false;
+
+        //Cpi accounts
+        let cpi_accounts = Transfer {
+            from: escrow_token_account.to_account_info().clone(),
+            to: winner_account.to_account_info().clone(),
+            authority: ctx.accounts.winner.to_account_info(),
+        };
+
+        // Transfer all funds from escrow to the winner
+        let transfer_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.clone(),
+            cpi_accounts,
+            ctx.accounts.rent.to_account_info().clone(),
+        );
+        Token::transfer(transfer_ctx, escrow_token_account.lamports())?;
+
+        msg!("Challenge finalized! Funds transferred to winner!");
+
+        Ok(())
+    }
+
+    #[derive(Clone, AnchorSerialize, AnchorDeserialize)]
+    pub struct ChallengeParams {
+        pub goal: u64,
+        pub challenge_type: u8,
+        pub start_time: i64,
+        pub end_time: i64,
+        pub stake_amount: u64,
+    }
+
+    #[derive(Accounts)]
+    pub struct CreateChallenge<'info> {
+        #[account(init, payer = creator, space = ChallengeMetadata::LEN)]
+        pub challenge_metadata: Account<'info, ChallengeMetadata>,
+        #[account(
+        init_if_needed,
+        seeds = [b"escrowVault"],
+        bump,
+        payer = signer,
+        space = 8
+        )]
+        pub escrow_token_account: Account<'info, TokenAccount>,
+        pub token_mint: Account<'info, Mint>,
+        #[account(mut)]
+        pub creator: Signer<'info>,
+        pub system_program: Program<'info, System>,
+        pub token_program: AccountInfo<'info>,
+        pub rent: Sysvar<'info, Rent>,
+    }
+
+    #[derive(Accounts)]
+    pub struct FinalizeChallenge<'info> {
+        #[account(mut)]
+        pub challenge_metadata: Account<'info, ChallengeMetadata>,
+        #[account(mut)]
+        pub escrow_token_account: Account<'info, TokenAccount>,
+        #[account(mut)]
+        pub winner: Signer<'info>, // Added winner as Signer
+        pub token_program: AccountInfo<'info>,
+        pub rent: Sysvar<'info, Rent>,
     }
 }
 
